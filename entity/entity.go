@@ -73,6 +73,7 @@ func (e *entity) Connect(id int) (chan<- Message, error) {
 		e.proc++
 		e.slk.Unlock()
 		in := e.startSession(id)
+		time.Sleep(100 * time.Millisecond)
 		log.Println("new conn")
 		return in, nil
 	}

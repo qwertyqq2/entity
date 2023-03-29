@@ -9,18 +9,9 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
+	opts "github.com/qwertyqq2/entity"
 	"github.com/qwertyqq2/entity/entity"
 	mes "github.com/qwertyqq2/entity/message"
-)
-
-const (
-	sendMessageMaxDelay  = 10 * time.Second
-	sendMsgCutoff        = 150
-	maxMsgSize           = 10
-	resentInterval       = 1 * time.Second
-	waitSendInterval     = 3 * time.Second
-	reconnectInterval    = 1 * time.Second
-	maxWaitingConnection = 100 * time.Second
 )
 
 var (
@@ -92,10 +83,29 @@ func newRecall() recall {
 	}
 }
 
-type impl struct {
-	id int // номер процесса
+type Option func(*impl)
 
-	queue *Queue // очереднь входящих из вне
+func ResentInterval(resentInterval time.Duration) Option {
+	return func(i *impl) {
+		i.resendInterval = resentInterval
+	}
+}
+
+func WaitRespInterval(waitRespInterval time.Duration) Option {
+	return func(i *impl) {
+		i.waitRespInterval = waitRespInterval
+	}
+}
+
+// is better
+func DefaultOpts() []Option {
+	return []Option{ResentInterval(opts.ResentInterval), WaitRespInterval(opts.WaitSendInterval)}
+}
+
+type impl struct {
+	id int
+
+	queue *Queue
 
 	ctx      context.Context
 	shutdown func()
@@ -119,12 +129,12 @@ type impl struct {
 	resendTimer      *clock.Timer
 }
 
-func New(id int) *impl {
+func newProc(id int) *impl {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	clock := clock.New()
 
-	resendTimer := clock.Timer(resentInterval)
+	resendTimer := clock.Timer(opts.ResentInterval)
 
 	ch := make(chan mes.Inside)
 
@@ -135,11 +145,11 @@ func New(id int) *impl {
 		outgoingWork:     make(chan time.Time),
 		clock:            clock,
 		recall:           newRecall(),
-		resendInterval:   resentInterval,
+		resendInterval:   opts.ResentInterval,
 		resendTimer:      resendTimer,
 		queue:            newQueue(context.Background(), ch),
-		waitRespInterval: waitSendInterval,
-		waitRespTimer:    clock.Timer(waitSendInterval),
+		waitRespInterval: opts.WaitSendInterval,
+		waitRespTimer:    clock.Timer(opts.WaitSendInterval),
 		disconnected:     make(chan struct{}),
 	}
 }
@@ -191,7 +201,7 @@ func (p *impl) run() {
 		select {
 		case <-p.resendTimer.C:
 			log.Println("resend timer tick")
-			p.resendTimer.Reset(resentInterval)
+			p.resendTimer.Reset(opts.ResentInterval)
 			p.sendIfReady()
 
 		case when := <-p.outgoingWork:
@@ -200,12 +210,12 @@ func (p *impl) run() {
 			} else if !scheduleWork.Stop() {
 				<-scheduleWork.C
 			}
-			if p.pendingCount() > sendMsgCutoff || p.clock.Since(workScheduled) >= sendMessageMaxDelay {
+			if p.pendingCount() > opts.SendMsgCutoff || p.clock.Since(workScheduled) >= opts.SendMessageMaxDelay {
 				log.Println("send for max delay")
 				p.sendIfReady()
 				workScheduled = time.Time{}
 			} else {
-				scheduleWork.Reset(sendMessageMaxDelay)
+				scheduleWork.Reset(opts.SendMessageMaxDelay)
 			}
 
 		case <-scheduleWork.C:
@@ -302,14 +312,14 @@ func (p *impl) handleError(err error) {
 	case ErrTimeoutSend:
 		log.Println("disconnect")
 
-		after := time.After(maxWaitingConnection)
+		after := time.After(opts.MaxWaitingConnection)
 		reconnTimer := p.clock.Timer(0)
 
 		if !reconnTimer.Stop() {
 			<-reconnTimer.C
 		}
 		if err := p.Registration(p.ent); err != nil {
-			reconnTimer.Reset(reconnectInterval)
+			reconnTimer.Reset(opts.ReconnectInterval)
 		} else {
 			goto Connection
 		}
@@ -325,7 +335,7 @@ func (p *impl) handleError(err error) {
 				log.Println("try")
 				if err := p.Registration(p.ent); err != nil {
 					log.Println(err)
-					reconnTimer.Reset(reconnectInterval)
+					reconnTimer.Reset(opts.ReconnectInterval)
 					continue
 				}
 				goto Connection
@@ -371,7 +381,7 @@ func (p *impl) sendMessage() error {
 		sentEntries++
 		msgs = append(msgs, msg)
 
-		if msgSize > maxMsgSize {
+		if msgSize > opts.MaxMsgSize {
 			break
 		}
 
@@ -461,6 +471,10 @@ func (p *impl) signalWorkReady() {
 	case p.outgoingWork <- p.clock.Now():
 	default:
 	}
+}
+
+func (p *impl) ID() int {
+	return p.id
 }
 
 func (p *impl) logSendingMessage(msgs []entity.Message) {

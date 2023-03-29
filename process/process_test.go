@@ -129,7 +129,7 @@ func unloading(proc *impl) {
 }
 
 func TestQueue(t *testing.T) {
-	proc := New(1)
+	proc := newProc(1)
 
 	unloading(proc)
 
@@ -140,7 +140,7 @@ func TestQueue(t *testing.T) {
 }
 
 func TestRegestration(t *testing.T) {
-	proc := New(1)
+	proc := newProc(1)
 	ent := entity.New(procLimit)
 	if err := proc.Registration(ent); err != nil {
 		t.Fatal(err)
@@ -148,7 +148,7 @@ func TestRegestration(t *testing.T) {
 }
 
 func TestSendOnce(t *testing.T) {
-	proc := New(1)
+	proc := newProc(1)
 	go proc.queueIncomig()
 	key := "snap"
 	data := "is a snap"
@@ -175,7 +175,7 @@ func TestSendOnce(t *testing.T) {
 }
 
 func TestSend(t *testing.T) {
-	proc := New(1)
+	proc := newProc(1)
 	unloading(proc)
 
 	ent := entity.New(procLimit)
@@ -193,7 +193,7 @@ func TestSend(t *testing.T) {
 }
 
 func TestSendTimeout(t *testing.T) {
-	proc := New(1)
+	proc := newProc(1)
 
 	unloading(proc)
 
@@ -220,7 +220,7 @@ func TestSendTimeout(t *testing.T) {
 }
 
 func TestRunSendMsgCutoff(t *testing.T) {
-	proc := New(1)
+	proc := newProc(1)
 	ent := entity.New(procLimit)
 
 	var (

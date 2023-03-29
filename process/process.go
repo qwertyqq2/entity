@@ -1,10 +1,7 @@
 package process
 
 import (
-	"time"
-
 	"github.com/qwertyqq2/entity/entity"
-	"github.com/qwertyqq2/entity/process"
 )
 
 type Entity = entity.Entity
@@ -21,10 +18,16 @@ type Process interface {
 	Delete(key string)
 
 	Start(ent entity.Entity) error
+
+	ID() int
 }
 
-func WithProcessFunc(num int, fn ProcessFunc, ent Entity) (Process, error) {
-	proc := process.New(num)
+func WithProcessFunc(num int, fn ProcessFunc, ent Entity, opts ...Option) (Process, error) {
+	proc := newProc(num)
+
+	for _, o := range opts {
+		o(proc)
+	}
 
 	if err := proc.Start(ent); err != nil {
 		return nil, err
@@ -38,23 +41,18 @@ func WithProcessFunc(num int, fn ProcessFunc, ent Entity) (Process, error) {
 	return proc, nil
 }
 
-func WithEntity(num int, ent Entity) (Process, error) {
-	proc := process.New(num)
+func WithEntity(num int, ent Entity, opts ...Option) (Process, error) {
+	proc := newProc(num)
+
+	for _, o := range opts {
+		o(proc)
+	}
 
 	if err := proc.Start(ent); err != nil {
 		return nil, err
 	}
 
 	return proc, nil
-}
-
-func WithIntervals(num int, sendTimeoutInterval time.Duration, respTimeoutInterval time.Duration) Process {
-	proc := process.New(num)
-
-	proc.SetResentInterval(sendTimeoutInterval)
-	proc.SetWaitRespInterval(respTimeoutInterval)
-
-	return proc
 }
 
 func Shutdown(procs ...Process) {
