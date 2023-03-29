@@ -62,22 +62,12 @@
 
         // Create and run a process with options
         process.WithEntity(
-            // number of process
             curNumber,
-            // entity to write data
             entity,
-            // interval after which data is sent
             process.ResentInterval(1*time.Second),
-            // max size of message
-            process.MaxMsgSize(256), //
-            // interval after which a reconnection attempt is made
-            process.ReconnectInterval(1*time.Second), //
-            // if we have collected more data than this value,
-            // then an attempt is made to send entity data
-            process.SendMsgCutoff(100), //
-            //response timeout from entity
+            process.MaxMsgSize(256), 
+            process.ReconnectInterval(1*time.Second), 
+            process.SendMsgCutoff(100), 
             process.WaitRespInterval(5*time.Second),
-            // if there is no connection during this interval,
-            // then the process is closed
             process.MaxWaitingConnection(100*time.Second),
         )
