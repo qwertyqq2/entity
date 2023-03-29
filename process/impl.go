@@ -186,7 +186,6 @@ func (p *impl) run() {
 	for p.ctx.Err() == nil {
 		select {
 		case <-p.resendTimer.C:
-			log.Println("resend timer tick")
 			p.resendTimer.Reset(opts.ResentInterval)
 			p.sendIfReady()
 
@@ -197,7 +196,6 @@ func (p *impl) run() {
 				<-scheduleWork.C
 			}
 			if p.pendingCount() > opts.SendMsgCutoff || p.clock.Since(workScheduled) >= opts.SendMessageMaxDelay {
-				log.Println("send for max delay")
 				p.sendIfReady()
 				workScheduled = time.Time{}
 			} else {
@@ -205,12 +203,10 @@ func (p *impl) run() {
 			}
 
 		case <-scheduleWork.C:
-			fmt.Println("schedule")
 			workScheduled = time.Time{}
 			p.sendIfReady()
 
 		case <-p.ctx.Done():
-			fmt.Println("shutdown")
 			return
 
 		}
@@ -301,7 +297,6 @@ func (p *impl) handleError(err error) {
 	}
 	switch err {
 	case ErrTimeoutSend:
-		log.Println("disconnect")
 
 		after := time.After(p.maxWaitingConnection)
 		reconnTimer := p.clock.Timer(0)
@@ -323,9 +318,7 @@ func (p *impl) handleError(err error) {
 				p.Shutdown()
 
 			case <-reconnTimer.C:
-				log.Println("try")
 				if err := p.Registration(p.ent); err != nil {
-					log.Println(err)
 					reconnTimer.Reset(p.reconnectInterval)
 					continue
 				}
@@ -333,7 +326,6 @@ func (p *impl) handleError(err error) {
 			}
 		}
 	Connection:
-		log.Println("conn update")
 		p.sendIfReady()
 
 	default:
@@ -345,7 +337,6 @@ func (p *impl) sendMessage() error {
 	entires := p.recall.want.Entries()
 	p.wk.Unlock()
 
-	log.Println("send msg")
 	var (
 		msgSize     = 0
 		sentEntries = 0
@@ -430,8 +421,7 @@ func (p *impl) sendMessage() error {
 		}
 	}
 
-	log.Println("success sending")
-	p.logSendingMessage(msgs)
+	//p.logSendingMessage(msgs)
 	return nil
 }
 

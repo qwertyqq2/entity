@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -81,7 +80,6 @@ func (e *entity) Connect(id int) (chan<- Message, error) {
 		e.slk.Unlock()
 		in := e.startSession(id)
 		time.Sleep(100 * time.Millisecond)
-		log.Println("new conn")
 		return in, nil
 	}
 	e.slk.Unlock()
@@ -226,7 +224,6 @@ func (e *entity) Resp(id int) Message {
 	case m := <-e.inside[id]:
 		return m
 	case <-ctx.Done():
-		log.Println("Entity: response timeout")
 		return mes.Message{}
 	}
 
