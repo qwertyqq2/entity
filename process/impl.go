@@ -83,25 +83,6 @@ func newRecall() recall {
 	}
 }
 
-type Option func(*impl)
-
-func ResentInterval(resentInterval time.Duration) Option {
-	return func(i *impl) {
-		i.resendInterval = resentInterval
-	}
-}
-
-func WaitRespInterval(waitRespInterval time.Duration) Option {
-	return func(i *impl) {
-		i.waitRespInterval = waitRespInterval
-	}
-}
-
-// is better
-func DefaultOpts() []Option {
-	return []Option{ResentInterval(opts.ResentInterval), WaitRespInterval(opts.WaitSendInterval)}
-}
-
 type impl struct {
 	id int
 
@@ -122,11 +103,16 @@ type impl struct {
 	wk     sync.RWMutex
 	recall recall
 
-	resendIntervalLk sync.RWMutex
-	resendInterval   time.Duration
-	waitRespInterval time.Duration
-	waitRespTimer    *clock.Timer
-	resendTimer      *clock.Timer
+	lk                   sync.RWMutex
+	maxMsgSize           int
+	sendMsgCutoff        int
+	maxWaitingConnection time.Duration
+	sendMessageMaxDelay  time.Duration
+	reconnectInterval    time.Duration
+	resendInterval       time.Duration
+	waitRespInterval     time.Duration
+	waitRespTimer        *clock.Timer
+	resendTimer          *clock.Timer
 }
 
 func newProc(id int) *impl {
@@ -270,8 +256,8 @@ func (p *impl) queueIncomig() {
 }
 
 func (p *impl) SetResentInterval(delay time.Duration) {
-	p.resendIntervalLk.Lock()
-	defer p.resendIntervalLk.Unlock()
+	p.lk.Lock()
+	defer p.lk.Unlock()
 
 	p.resendInterval = delay
 	if p.resendTimer == nil {
@@ -281,16 +267,16 @@ func (p *impl) SetResentInterval(delay time.Duration) {
 }
 
 func (p *impl) SetWaitRespInterval(delay time.Duration) {
-	p.resendIntervalLk.Lock()
-	defer p.resendIntervalLk.Unlock()
+	p.lk.Lock()
+	defer p.lk.Unlock()
 
 	p.waitRespInterval = delay
 }
 
 func (p *impl) resentWithTransfer() {
-	p.resendIntervalLk.RLock()
+	p.lk.RLock()
 	p.resendTimer.Reset(p.resendInterval)
-	p.resendIntervalLk.RUnlock()
+	p.lk.RUnlock()
 
 	if p.transferResent() {
 		if err := p.sendMessage(); err != nil {
@@ -308,18 +294,23 @@ func (p *impl) sendIfReady() {
 }
 
 func (p *impl) handleError(err error) {
+	select {
+	case <-p.ctx.Done():
+		return
+	default:
+	}
 	switch err {
 	case ErrTimeoutSend:
 		log.Println("disconnect")
 
-		after := time.After(opts.MaxWaitingConnection)
+		after := time.After(p.maxWaitingConnection)
 		reconnTimer := p.clock.Timer(0)
 
 		if !reconnTimer.Stop() {
 			<-reconnTimer.C
 		}
 		if err := p.Registration(p.ent); err != nil {
-			reconnTimer.Reset(opts.ReconnectInterval)
+			reconnTimer.Reset(p.reconnectInterval)
 		} else {
 			goto Connection
 		}
@@ -335,16 +326,13 @@ func (p *impl) handleError(err error) {
 				log.Println("try")
 				if err := p.Registration(p.ent); err != nil {
 					log.Println(err)
-					reconnTimer.Reset(opts.ReconnectInterval)
+					reconnTimer.Reset(p.reconnectInterval)
 					continue
 				}
 				goto Connection
 			}
 		}
 	Connection:
-		p.SetResentInterval(p.resendInterval)
-		p.SetWaitRespInterval(p.waitRespInterval)
-
 		log.Println("conn update")
 		p.sendIfReady()
 
@@ -381,7 +369,7 @@ func (p *impl) sendMessage() error {
 		sentEntries++
 		msgs = append(msgs, msg)
 
-		if msgSize > opts.MaxMsgSize {
+		if msgSize > p.maxMsgSize {
 			break
 		}
 

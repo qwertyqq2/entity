@@ -20,17 +20,24 @@ const (
 type Message = mes.Message
 type Inside = mes.Inside
 
+// Key-value store
 type Entity interface {
+	//Closeing entity
 	Shutdown()
 
+	//Connect process to entity
 	Connect(id int) (chan<- Message, error)
 
+	//Disconnect a process from an entity
 	Disconnect(id int) error
 
+	//Getting response on request asynchronously
 	Resp(id int) Message
 
+	//Display data in entities
 	String() string
 
+	// Len of entity
 	Len() int
 }
 

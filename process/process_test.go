@@ -189,7 +189,6 @@ func TestSend(t *testing.T) {
 	}
 
 	fmt.Println(ent.String())
-
 }
 
 func TestSendTimeout(t *testing.T) {
@@ -242,7 +241,7 @@ func TestRunSendMsgCutoff(t *testing.T) {
 
 	go addFn()
 
-	after := time.After(300 * time.Second)
+	after := time.After(20 * time.Second)
 	<-after
 	fmt.Println("n", n)
 	fmt.Println(ent.Len())

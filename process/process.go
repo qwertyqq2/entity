@@ -6,19 +6,28 @@ import (
 
 type Entity = entity.Entity
 
+// A function that is executed during the lifetime of a process
 type ProcessFunc func(proc Process)
 
+// Interface that writes data to entity
 type Process interface {
+	//Closing a process
 	Shutdown()
 
+	// Registration entity for process
+	// Returns an error if the process is already registered or if the entity is closed
 	Registration(ent entity.Entity) error
 
+	//Adds data to the process, after which they will go to the entity
 	Add(key, data string)
 
+	//Creates a request to remove data from an entity
 	Delete(key string)
 
+	//Start a process
 	Start(ent entity.Entity) error
 
+	//Process id
 	ID() int
 }
 
