@@ -120,6 +120,20 @@ func writeToProcess(p *impl, dur time.Duration) {
 	}
 }
 
+func TestQueueIncomig(t *testing.T) {
+	proc := newProc(1)
+
+	go proc.queueIncomig()
+	go writeToProcess(proc, durationWrite)
+	after := time.After(durationWrite)
+	<-after
+
+	fmt.Println("here")
+
+	fmt.Println(proc.queue.len())
+
+}
+
 // uploading data to a process
 func unloading(proc *impl) {
 	after := time.After(durationWrite)

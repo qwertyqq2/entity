@@ -122,8 +122,6 @@ func newProc(id int) *impl {
 
 	resendTimer := clock.Timer(opts.ResentInterval)
 
-	ch := make(chan mes.Inside)
-
 	return &impl{
 		id:               id,
 		ctx:              ctx,
@@ -133,7 +131,7 @@ func newProc(id int) *impl {
 		recall:           newRecall(),
 		resendInterval:   opts.ResentInterval,
 		resendTimer:      resendTimer,
-		queue:            newQueue(context.Background(), ch),
+		queue:            newQueue(),
 		waitRespInterval: opts.WaitSendInterval,
 		waitRespTimer:    clock.Timer(opts.WaitSendInterval),
 		disconnected:     make(chan struct{}),
@@ -215,15 +213,12 @@ func (p *impl) run() {
 }
 
 func (p *impl) queueIncomig() {
-	for can, err := p.queue.Can(); err == nil; can, err = p.queue.Can() {
-		if !can {
-			continue
-		}
-		ins, err := p.queue.Pull()
-		if err != nil {
-			return
-		}
+	p.queue.lk.Lock()
+	defer p.queue.lk.Unlock()
+	defer close(p.queue.done)
 
+	for p.queue.wait() {
+		ins := p.queue.pull()
 		p.wk.Lock()
 		if e, ok := p.recall.want.Contains(ins.key); ok {
 			if e.Empty() {
@@ -249,6 +244,7 @@ func (p *impl) queueIncomig() {
 			p.signalWorkReady()
 		}
 	}
+
 }
 
 func (p *impl) SetResentInterval(delay time.Duration) {
@@ -290,6 +286,7 @@ func (p *impl) sendIfReady() {
 }
 
 func (p *impl) handleError(err error) {
+	log.Println("handle error")
 	select {
 	case <-p.ctx.Done():
 		return
@@ -297,7 +294,6 @@ func (p *impl) handleError(err error) {
 	}
 	switch err {
 	case ErrTimeoutSend:
-
 		after := time.After(p.maxWaitingConnection)
 		reconnTimer := p.clock.Timer(0)
 
@@ -376,7 +372,7 @@ func (p *impl) sendMessage() error {
 
 	p.wk.Lock()
 	defer p.wk.Unlock()
-
+	log.Println("send")
 	for _, m := range msgs {
 		select {
 		case <-p.ctx.Done():
@@ -386,27 +382,33 @@ func (p *impl) sendMessage() error {
 			done := make(chan struct{})
 			p.recall.SentAt(m.Inside.Key, p.clock.Now())
 
-			p.waitRespTimer.Reset(p.waitRespInterval)
+			if !p.waitRespTimer.Stop() {
+				<-p.waitRespTimer.C
+			}
 
 			go func() {
-				defer func() {
+				doneFn := func() {
 					select {
 					case done <- struct{}{}:
 					}
-				}()
+				}
 				resp := p.ent.Resp(p.id)
 				p.recall.ClearSentAt(m.Inside.Key)
 				switch resp.Op {
 				case mes.Success:
 					p.recall.Remove(m.Inside.Key)
+					doneFn()
 				case mes.Fail:
 					p.recall.MarkUndefined(m.Op, m.Inside)
 					p.recall.sent.Remove(m.Inside.Key)
+					doneFn()
 				default:
 					p.recall.want.Add(m.Inside.Key, m.Op, m.Inside)
 					p.recall.sent.Remove(m.Inside.Key)
 				}
 			}()
+
+			p.waitRespTimer.Reset(p.waitRespInterval)
 
 			select {
 			case <-done:
@@ -420,8 +422,7 @@ func (p *impl) sendMessage() error {
 			}
 		}
 	}
-
-	//p.logSendingMessage(msgs)
+	p.logSendingMessage(msgs)
 	return nil
 }
 

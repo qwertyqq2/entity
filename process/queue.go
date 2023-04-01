@@ -1,68 +1,58 @@
 package process
 
 import (
-	"context"
 	"sync"
-
-	mes "github.com/qwertyqq2/entity/message"
 )
 
 type Queue struct {
-	ctx      context.Context
-	shutdown func()
-	ch       chan mes.Inside
-	q        []Entry
-	mu       sync.RWMutex
+	lk    sync.RWMutex
+	queue []Entry
+	cond  sync.Cond
+	stop  bool
+	done  chan struct{}
+	out   chan Entry
 }
 
-func newQueue(ctx context.Context, ch chan mes.Inside) *Queue {
-	qctx, cancel := context.WithCancel(ctx)
-	return &Queue{
-		ctx:      qctx,
-		shutdown: cancel,
-		ch:       ch,
-		q:        make([]Entry, 0),
+func newQueue() *Queue {
+	q := &Queue{
+		queue: make([]Entry, 0),
+		done:  make(chan struct{}),
 	}
+	q.cond = sync.Cond{L: &q.lk}
+	return q
 }
 
 func (q *Queue) Shutdown() {
-	q.shutdown()
+	q.lk.Lock()
+	q.stop = true
+	q.lk.Unlock()
+	q.cond.Broadcast()
+	<-q.done
+}
+
+func (q *Queue) wait() bool {
+	for !q.stop && len(q.queue) == 0 {
+		q.cond.Wait()
+	}
+	return !q.stop
+}
+
+func (q *Queue) pull() Entry {
+	if q.len() == 0 {
+		panic("empty queue")
+	}
+	e := q.queue[0]
+	q.queue = q.queue[1:]
+	return e
 }
 
 func (q *Queue) Push(e Entry) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	q.q = append(q.q, e)
-
+	q.lk.Lock()
+	defer q.lk.Unlock()
+	q.queue = append(q.queue, e)
+	q.cond.Broadcast()
 }
 
-func (q *Queue) Can() (bool, error) {
-	select {
-	case <-q.ctx.Done():
-		return false, q.ctx.Err()
-	default:
-	}
-
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	if q.Len() == 0 {
-		return false, nil
-	}
-
-	return true, nil
-}
-
-func (q *Queue) Pull() (Entry, error) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	d := q.q[0]
-	q.q = q.q[1:]
-	return d, nil
-}
-
-func (q *Queue) Len() int {
-	return len(q.q)
+func (q *Queue) len() int {
+	return len(q.queue)
 }

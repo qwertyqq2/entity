@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -222,6 +223,7 @@ func (e *entity) Resp(id int) Message {
 	defer cancel()
 	select {
 	case m := <-e.inside[id]:
+		log.Println("resp")
 		return m
 	case <-ctx.Done():
 		return mes.Message{}
